@@ -46,6 +46,39 @@ def crop_to_square(src: Path, dst: Path) -> None:
     )
 
 
+def write_tags(
+    mp3_path: Path,
+    title: str | None,
+    artist: str | None,
+    cover_path: Path | None,
+) -> None:
+    from mutagen.id3 import ID3, APIC, TIT2, TPE1
+    from mutagen.id3._util import ID3NoHeaderError
+
+    try:
+        tags = ID3(mp3_path)
+    except ID3NoHeaderError:
+        tags = ID3()
+
+    if title:
+        tags.setall("TIT2", [TIT2(encoding=3, text=title)])
+    if artist:
+        tags.setall("TPE1", [TPE1(encoding=3, text=artist)])
+    if cover_path:
+        tags.setall(
+            "APIC",
+            [APIC(
+                encoding=3,
+                mime="image/jpeg",
+                type=3,  # front cover
+                desc="Cover",
+                data=Path(cover_path).read_bytes(),
+            )],
+        )
+
+    tags.save(mp3_path)
+
+
 def get_track_title(url: str) -> str:
     with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
         info = ydl.extract_info(url, download=False)

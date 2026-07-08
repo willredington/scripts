@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-from scripts.add_music import crop_to_square, resolve_artist
+from scripts.add_music import crop_to_square, resolve_artist, write_tags
 
 
 def _make_image(path: Path, width: int, height: int) -> None:
@@ -54,3 +54,40 @@ def test_crop_to_square_produces_square(tmp_path):
     crop_to_square(src, dst)
     w, h = _dimensions(dst)
     assert w == h == 360
+
+
+def _make_silent_mp3(path: Path) -> None:
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(path)],
+        check=True,
+    )
+
+
+def test_write_tags_sets_title_artist_and_cover(tmp_path):
+    mp3 = tmp_path / "song.mp3"
+    _make_silent_mp3(mp3)
+    cover = tmp_path / "cover.jpg"
+    _make_image(cover, 300, 300)
+
+    write_tags(mp3, "My Title", "My Artist", cover)
+
+    from mutagen.id3 import ID3
+    tags = ID3(mp3)
+    assert tags["TIT2"].text == ["My Title"]
+    assert tags["TPE1"].text == ["My Artist"]
+    apic = tags.getall("APIC")
+    assert apic and apic[0].data == cover.read_bytes()
+
+
+def test_write_tags_skips_missing_fields(tmp_path):
+    mp3 = tmp_path / "song.mp3"
+    _make_silent_mp3(mp3)
+
+    write_tags(mp3, "Only Title", None, None)
+
+    from mutagen.id3 import ID3
+    tags = ID3(mp3)
+    assert tags["TIT2"].text == ["Only Title"]
+    assert "TPE1" not in tags
+    assert not tags.getall("APIC")
