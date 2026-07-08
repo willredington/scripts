@@ -11,8 +11,9 @@ A personal collection of command-line utilities, packaged as the `scripts` Pytho
 - **Sync dependencies / create venv:** `uv sync`
 - **Run a console script (without installing):** `uv run add-music <youtube-url>`
 - **Add a runtime dependency:** `uv add <package>` (edits `pyproject.toml` + `uv.lock`)
+- **Run the tests:** `uv run pytest`
 
-There is currently no test suite, linter, or formatter configured.
+Tests live in `tests/` (pytest). The suite synthesizes images and a silent MP3 with **ffmpeg/ffprobe**, so those must be on the host to run it. There is no linter or formatter configured.
 
 ## Adding a new utility
 
