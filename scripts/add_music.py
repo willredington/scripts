@@ -2,7 +2,9 @@ import argparse
 import re
 import subprocess
 import sys
+import tempfile
 import unicodedata
+import urllib.request
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -79,10 +81,13 @@ def write_tags(
     tags.save(mp3_path)
 
 
-def get_track_title(url: str) -> str:
+def get_track_info(url: str) -> dict:
     with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
-        info = ydl.extract_info(url, download=False)
-        return ydl.prepare_filename(info, outtmpl="%(title)s")
+        return ydl.extract_info(url, download=False)
+
+
+def download_thumbnail(url: str, dst: Path) -> None:
+    urllib.request.urlretrieve(url, dst)
 
 
 def main() -> None:
@@ -95,7 +100,9 @@ def main() -> None:
 
     MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 
-    slug = slugify(get_track_title(url))
+    info = get_track_info(url)
+    title = info.get("title") or "unknown"
+    slug = slugify(title)
     output_path = MUSIC_DIR / f"{slug}.mp3"
 
     if output_path.exists():
@@ -116,5 +123,25 @@ def main() -> None:
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
+
+    # Best-effort metadata: never let a tagging failure discard the MP3.
+    artist = resolve_artist(info)
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        cover_path = None
+        thumb_url = info.get("thumbnail")
+        if thumb_url:
+            try:
+                raw = tmp / "thumb"
+                download_thumbnail(thumb_url, raw)
+                cover_path = tmp / "cover.jpg"
+                crop_to_square(raw, cover_path)
+            except Exception as err:
+                print(f"Warning: could not prepare thumbnail: {err}", file=sys.stderr)
+                cover_path = None
+        try:
+            write_tags(output_path, title, artist, cover_path)
+        except Exception as err:
+            print(f"Warning: could not write tags: {err}", file=sys.stderr)
 
     print(f"Saved: {output_path.name}")
