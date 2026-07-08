@@ -1,5 +1,6 @@
 import argparse
 import re
+import subprocess
 import sys
 import unicodedata
 from pathlib import Path
@@ -33,6 +34,16 @@ def resolve_artist(info: dict) -> str | None:
         elif isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def crop_to_square(src: Path, dst: Path) -> None:
+    # Commas inside crop(...) must be escaped so ffmpeg's filter parser does
+    # not read them as filter-chain separators.
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+         "-vf", "crop=min(iw\\,ih):min(iw\\,ih)", "-frames:v", "1", str(dst)],
+        check=True,
+    )
 
 
 def get_track_title(url: str) -> str:
