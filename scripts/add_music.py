@@ -14,6 +14,14 @@ import yt_dlp
 MUSIC_DIR = Path("/Users/willredington/shared/music")
 MAX_SLUG_LENGTH = 80
 
+# YouTube's default ANDROID_VR client formats return 403s (its direct CDN
+# URLs are blocked even with a valid PO token). web_safari/android formats
+# require solving a JS challenge (remote_components) but actually work.
+YDL_NETWORK_OPTS = {
+    "extractor_args": {"youtube": {"player_client": ["web_safari", "android"]}},
+    "remote_components": ["ejs:github"],
+}
+
 
 def slugify(text: str, max_length: int = MAX_SLUG_LENGTH) -> str:
     text = unicodedata.normalize("NFKC", text)
@@ -82,7 +90,7 @@ def write_tags(
 
 
 def get_track_info(url: str) -> dict:
-    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+    with yt_dlp.YoutubeDL({"quiet": True, **YDL_NETWORK_OPTS}) as ydl:
         return ydl.extract_info(url, download=False)
 
 
@@ -110,7 +118,7 @@ def main() -> None:
         sys.exit(0)
 
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio/best[height<=480]/best",
         "outtmpl": str(MUSIC_DIR / f"{slug}.%(ext)s"),
         "postprocessors": [
             {
@@ -119,6 +127,7 @@ def main() -> None:
                 "preferredquality": "192",
             }
         ],
+        **YDL_NETWORK_OPTS,
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
