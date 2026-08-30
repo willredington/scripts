@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-from scripts.add_music import crop_to_square, resolve_artist, write_tags
+from scripts.add_music import crop_to_square, normalize_url, resolve_artist, write_tags
 
 
 def _make_image(path: Path, width: int, height: int) -> None:
@@ -91,3 +91,44 @@ def test_write_tags_skips_missing_fields(tmp_path):
     assert tags["TIT2"].text == ["Only Title"]
     assert "TPE1" not in tags
     assert not tags.getall("APIC")
+
+
+WATCH_URL = "https://www.youtube.com/watch?v=xdI_3GdLt8g"
+
+
+def test_normalize_url_strips_playlist_context():
+    assert normalize_url(
+        "https://www.youtube.com/watch?v=xdI_3GdLt8g&list=RDvpy_OuMZ6Po&index=12"
+    ) == WATCH_URL
+
+
+def test_normalize_url_leaves_bare_watch_url_alone():
+    assert normalize_url(WATCH_URL) == WATCH_URL
+
+
+def test_normalize_url_undoes_shell_escapes():
+    assert normalize_url(
+        "https://www.youtube.com/watch\\?v=xdI_3GdLt8g\\&list=RDvpy_OuMZ6Po"
+    ) == WATCH_URL
+
+
+def test_normalize_url_percent_decodes():
+    assert normalize_url(
+        "https://www.youtube.com/watch%3Fv%3DxdI_3GdLt8g%26list%3DRDvpy_OuMZ6Po"
+    ) == WATCH_URL
+
+
+def test_normalize_url_handles_short_links():
+    assert normalize_url("https://youtu.be/xdI_3GdLt8g?si=abc123&t=42") == WATCH_URL
+
+
+def test_normalize_url_handles_shorts_and_music():
+    assert normalize_url("https://www.youtube.com/shorts/xdI_3GdLt8g") == WATCH_URL
+    assert normalize_url(
+        "https://music.youtube.com/watch?v=xdI_3GdLt8g&list=RDAMVMxdI_3GdLt8g"
+    ) == WATCH_URL
+
+
+def test_normalize_url_passes_through_unknown_urls():
+    url = "https://example.com/song.mp3?a=1&b=2"
+    assert normalize_url(url) == url

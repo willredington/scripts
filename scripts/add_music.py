@@ -6,12 +6,12 @@ import tempfile
 import unicodedata
 import urllib.request
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
 import yt_dlp
 
+from scripts.music_sync import MUSIC_DIR, sync_to_cloud
 
-MUSIC_DIR = Path("/Users/willredington/shared/music")
 MAX_SLUG_LENGTH = 80
 
 # YouTube's default ANDROID_VR client formats return 403s (its direct CDN
@@ -21,6 +21,39 @@ YDL_NETWORK_OPTS = {
     "extractor_args": {"youtube": {"player_client": ["web_safari", "android"]}},
     "remote_components": ["ejs:github"],
 }
+
+
+YOUTUBE_HOSTS = {"youtube.com", "m.youtube.com", "music.youtube.com"}
+# Paths where the video id is the last segment instead of a `v=` query param.
+YOUTUBE_ID_PATH_PREFIXES = ("/shorts/", "/embed/", "/live/", "/v/")
+
+
+def normalize_url(raw: str) -> str:
+    """Reduce a pasted YouTube link to the bare video it points at.
+
+    Links copied from the browser carry playlist context
+    (`&list=RD...&index=12`), which makes yt-dlp fetch the whole radio mix
+    instead of the one track. Non-YouTube URLs pass through untouched.
+    """
+    # Remove shell backslash escapes (e.g. \? \& \=) then percent-decode
+    url = unquote(re.sub(r"\\(.)", r"\1", raw))
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+
+    video_id = None
+    if host in YOUTUBE_HOSTS:
+        if parsed.path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [None])[0]
+        elif parsed.path.startswith(YOUTUBE_ID_PATH_PREFIXES):
+            video_id = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+    elif host == "youtu.be":
+        video_id = parsed.path.strip("/").split("/")[0]
+
+    if not video_id:
+        return url
+    return f"https://www.youtube.com/watch?v={video_id}"
 
 
 def slugify(text: str, max_length: int = MAX_SLUG_LENGTH) -> str:
@@ -90,7 +123,7 @@ def write_tags(
 
 
 def get_track_info(url: str) -> dict:
-    with yt_dlp.YoutubeDL({"quiet": True, **YDL_NETWORK_OPTS}) as ydl:
+    with yt_dlp.YoutubeDL({"quiet": True, "noplaylist": True, **YDL_NETWORK_OPTS}) as ydl:
         return ydl.extract_info(url, download=False)
 
 
@@ -103,8 +136,7 @@ def main() -> None:
     parser.add_argument("url", help="YouTube URL")
     args = parser.parse_args()
 
-    # Remove shell backslash escapes (e.g. \? \& \=) then percent-decode
-    url = unquote(re.sub(r"\\(.)", r"\1", args.url))
+    url = normalize_url(args.url)
 
     MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -119,6 +151,7 @@ def main() -> None:
 
     ydl_opts = {
         "format": "bestaudio/best[height<=480]/best",
+        "noplaylist": True,
         "outtmpl": str(MUSIC_DIR / f"{slug}.%(ext)s"),
         "postprocessors": [
             {
@@ -154,3 +187,8 @@ def main() -> None:
             print(f"Warning: could not write tags: {err}", file=sys.stderr)
 
     print(f"Saved: {output_path.name}")
+
+    try:
+        sync_to_cloud(output_path)
+    except Exception as err:
+        print(f"Warning: could not sync to cloud: {err}", file=sys.stderr)
