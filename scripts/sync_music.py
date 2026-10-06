@@ -1,6 +1,6 @@
-from scripts.music_sync import MUSIC_DIR, sync_to_cloud
+from scripts.music_sync import MUSIC_DIR, mirror_to_cloud
 
 
 def main() -> None:
-    sync_to_cloud(MUSIC_DIR)
+    mirror_to_cloud(MUSIC_DIR)
     print("Synced")
